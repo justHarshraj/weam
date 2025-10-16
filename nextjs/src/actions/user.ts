@@ -28,6 +28,11 @@ export const toggleBrainAction = async (
     toggleStatus: boolean,
     isAll: boolean
 ) => {
+    // Enforce admin privilege check before allowing admin action
+    const session = await getSessionUser();
+    if (!session || session.roleCode !== 'admin') {
+        throw new Error('Unauthorized: Admin privileges required.');
+    }
     const response = await serverApi({
         action: MODULE_ACTIONS.TOGGLE,
         prefix: MODULE_ACTIONS.ADMIN_PREFIX,
