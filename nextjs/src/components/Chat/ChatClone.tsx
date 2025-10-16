@@ -106,6 +106,16 @@ const defaultContext: SelectedContextType = {
 };
 let API_TYPE = API_TYPE_OPTIONS.OPEN_AI;
 
+// Utility function to remove sensitive fields from model config
+function sanitizeModelConfig(model) {
+    if (!model || typeof model !== 'object') return model;
+    const { config, ...rest } = model;
+    if (!config || typeof config !== 'object') return model;
+    // Remove apikey from config
+    const { apikey, ...safeConfig } = config;
+    return { ...rest, config: safeConfig };
+}
+
 const ChatPage = memo(() => {
     const dispatch = useDispatch();
     const router = useRouter();
@@ -526,10 +536,15 @@ const ChatPage = memo(() => {
             ]);
         }
 
+        // Sanitize model objects before sending to server
+        const sanitizedSelectedAIModal = sanitizeModelConfig(selectedAIModal);
+        const sanitizedUserModal = userModal.map(sanitizeModelConfig);
+        const sanitizedMatchedModel = sanitizedUserModal.find((el) => el.name === modalName);
+
         const newPromptReqBody = {
             text: query,
             chatId: params.id,
-            model: selectedAIModal,
+            model: sanitizedSelectedAIModal,
             promptId: cloneContext?.prompt_id,
             customGptId: cloneContext?.custom_gpt_id || persistTagData?.custom_gpt_id,
             media: (globalUploadedFile?.length === 1 && globalUploadedFile[0]?._id === undefined) ? [] : globalUploadedFile || [],
@@ -539,7 +554,6 @@ const ChatPage = memo(() => {
             companyId: companyId,
             user: formatMessageUser(currentUser),
             isPaid: true,
-            apiKey: selectedAIModal.config.apikey,
             usedCredit: modelCredit
         };
         img_url = handleImageConversation(globalUploadedFile);
@@ -564,32 +578,27 @@ const ChatPage = memo(() => {
             updatedConversations[updatedConversations.length - 1] = lastConversation;
             return updatedConversations;
         });
-        //Insert in message table
-        // enterNewPrompt(newPromptReqBody, socket);
         setLoading(true);
         
-        // Calculate model credit before sending request
-        //const modelCredit = getModelCredit(modalName);
-        const matchedModel = userModal.find((el) => el.name === modalName);
+        // Use sanitized matchedModel for socket emit
         socket.emit(SOCKET_EVENTS.LLM_RESPONSE_SEND, {
             query: query,
             chatId: params.id,
-            model: matchedModel.name,
-            code: matchedModel.bot.code,
+            model: sanitizedMatchedModel.name,
+            code: sanitizedMatchedModel.bot.code,
             promptId: cloneContext?.prompt_id,
             customGptId: cloneContext?.custom_gpt_id || persistTagData?.custom_gpt_id,
             threadId: messageId,
             media: Array.isArray(globalUploadedFile) ? globalUploadedFile : [],
             cloneMedia: hasImageFile(globalUploadedFile) ? [] : globalUploadedFile, // Don't send cloneMedia when images are present
             imageUrls: img_url || [], // Add image URLs for vision support
-            responseModel: matchedModel.name,
+            responseModel: sanitizedMatchedModel.name,
             messageId: messageId,
             companyId: companyId,
             user: formatMessageUser(currentUser),
             isPaid: true,
             responseAPI: API_TYPE,
             proAgentData: serializableProAgentData,
-            apiKey: matchedModel.config.apikey,
             brainId: getDecodedObjectId(),
             usedCredit: modelCredit
         })
@@ -597,8 +606,7 @@ const ChatPage = memo(() => {
             socket.emit(SOCKET_EVENTS.GENERATE_TITLE_BY_LLM, {
                 query: query,
                 chatId: params.id,
-                code: selectedAIModal.bot.code,
-                apiKey: selectedAIModal.config.apikey
+                code: sanitizedSelectedAIModal.bot.code
             })
         }
     };
@@ -1564,7 +1572,7 @@ const ChatPage = memo(() => {
                                         fileData={globalUploadedFile}                                     
                                     />
                                 )}
-                                {fileLoader && (<ChatInputFileLoader/>)}
+                                {fileLoader && (<ChatInputFileLoader/>)}}
                                 {(showAgentList || showPromptList) && (
                                     <div ref={agentPromptDropdownRef}>
                                     {showAgentList && (
